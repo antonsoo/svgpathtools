@@ -106,6 +106,33 @@ class TestDegenerateIntersections(unittest.TestCase):
         self.assertEqual(curve.intersect(point), [(1., 0.)])
         self.assertEqual(point.intersect(curve), [(0., 1.)])
 
+    def test_point_near_bezier_endpoint(self):
+        curve = QuadraticBezier(0, 1, 2)
+        point = QuadraticBezier(1e-9, 1e-9, 1e-9)
+        for first, second in [(point, curve), (curve, point)]:
+            with self.subTest(first=first):
+                result = first.intersect(second, tol=1e-12)
+                self.assertEqual(len(result), 1)
+                t, u = result[0]
+                self.assertLessEqual(
+                    abs(first.point(t) - second.point(u)), 1e-12)
+
+    def test_point_near_arc_endpoints(self):
+        arc = Arc(-1, 1 + 2j, 37, False, True, 1)
+        for curve in [arc, arc.reversed()]:
+            for t in [1e-7, 1 - 1e-7]:
+                z = curve.point(t)
+                point = QuadraticBezier(z, z, z)
+                for first, second in [(point, curve), (curve, point)]:
+                    with self.subTest(first=first, t=t):
+                        result = bezier_intersections(
+                            first, second, curve.length(),
+                            tol=1e-12, tol_deC=1e-12)
+                        self.assertEqual(len(result), 1)
+                        u, v = result[0]
+                        self.assertLessEqual(
+                            abs(first.point(u) - second.point(v)), 1e-12)
+
     def test_finite_collinear_contact_at_extrema(self):
         for direction in [1, 1j]:
             first = QuadraticBezier(*(p * direction + 3 + 4j

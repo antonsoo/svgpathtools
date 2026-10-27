@@ -5,7 +5,8 @@ points given by their standard representation."""
 
 # External dependencies:
 from __future__ import division, absolute_import, print_function
-from math import factorial as fac, ceil, log, sqrt
+from cmath import phase
+from math import factorial as fac, ceil, log, sqrt, degrees
 from numpy import poly1d
 
 # Internal dependencies
@@ -296,10 +297,11 @@ def bezier_intersections(bez1, bez2, longer_length, tol=1e-8, tol_deC=1e-8):
         point = point_curve[0]
         candidates = [0., 1.]
         if hasattr(other, 'large_arc'):
-            from .path import Line
-            candidates.extend(t for direction in (1, 1j)
-                              for t, _ in other.intersect(
-                                  Line(point - direction, point + direction)))
+            angle = degrees(phase(other.u1transform(point)))
+            for turn in (-360, 0, 360):
+                t = (angle + turn - other.theta) / other.delta
+                if 0 <= t <= 1:
+                    candidates.append(t)
         else:
             polynomial = bezier2polynomial(other, return_poly1d=True)
             for component in (real, imag):
@@ -307,9 +309,10 @@ def bezier_intersections(bez1, bez2, longer_length, tol=1e-8, tol_deC=1e-8):
                 if any(equation.coeffs):
                     candidates.extend(polyroots01(equation))
                     break
-        for t in candidates:
-            if abs(bezier_point(other, t) - point) <= tol:
-                return [(t, 0.) if swapped else (0., t)]
+        # Endpoint fallbacks must not hide a more accurate interior root.
+        t = min(candidates, key=lambda u: abs(bezier_point(other, u) - point))
+        if abs(bezier_point(other, t) - point) <= tol_deC:
+            return [(t, 0.) if swapped else (0., t)]
         return []
 
     # Axis-aligned Beziers trace a line, but need not use its linear
