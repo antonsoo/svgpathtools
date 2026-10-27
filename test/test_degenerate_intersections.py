@@ -1,7 +1,7 @@
 import unittest
 
 from svgpathtools import Arc, CubicBezier, Path, QuadraticBezier
-from svgpathtools.bezier import boxes_intersect
+from svgpathtools.bezier import bezier_intersections, boxes_intersect
 
 
 class TestDegenerateIntersections(unittest.TestCase):
@@ -72,6 +72,49 @@ class TestDegenerateIntersections(unittest.TestCase):
                 ta, tb = result[0]
                 self.assertAlmostEqual(a.point(ta), -1j, delta=1e-10)
                 self.assertAlmostEqual(b.point(tb), -1j, delta=1e-10)
+
+    def test_point_bezier_contacts(self):
+        curve = CubicBezier(0, 2 + 2j, 4 - 2j, 6)
+        for point, expected in [(3, True), (3 + 1j, False)]:
+            node = CubicBezier(point, point, point, point)
+            for a, b in [(node, curve), (curve, node)]:
+                with self.subTest(a=a, b=b):
+                    result = a.intersect(b)
+                    self.assertEqual(len(result), int(expected))
+                    for ta, tb in result:
+                        self.assertAlmostEqual(a.point(ta), point)
+                        self.assertAlmostEqual(b.point(tb), point)
+
+    def test_point_bezier_on_flat_curve_or_arc(self):
+        node = CubicBezier(-1j, -1j, -1j, -1j)
+        for curve in [QuadraticBezier(-2j, 0, 2j),
+                      Arc(-1, 1 + 1j, 0, False, True, 1)]:
+            for a, b in [(node, curve), (curve, node)]:
+                with self.subTest(a=a, b=b):
+                    # Arc.intersect has its own polynomial special case;
+                    # exercise the generic solver's Arc support directly.
+                    result = (bezier_intersections(a, b, curve.length())
+                              if isinstance(curve, Arc) else a.intersect(b))
+                    self.assertEqual(len(result), 1)
+                    ta, tb = result[0]
+                    self.assertAlmostEqual(a.point(ta), -1j)
+                    self.assertAlmostEqual(b.point(tb), -1j)
+
+    def test_finite_collinear_contact_at_extrema(self):
+        for direction in [1, 1j]:
+            first = QuadraticBezier(*(p * direction + 3 + 4j
+                                      for p in [0, 2, 0]))
+            second = QuadraticBezier(*(p * direction + 3 + 4j
+                                       for p in [2, 0, 2]))
+            for a, b in [(first, second), (second, first)]:
+                with self.subTest(a=a, b=b):
+                    self.assertEqual(a.intersect(b), [(0.5, 0.5)])
+
+    def test_finite_collinear_contact_at_endpoints(self):
+        first = QuadraticBezier(0, 0.5, 1)
+        second = CubicBezier(1, 2, 3, 4)
+        self.assertEqual(first.intersect(second), [(1., 0.)])
+        self.assertEqual(second.intersect(first), [(0., 1.)])
 
 
 if __name__ == '__main__':

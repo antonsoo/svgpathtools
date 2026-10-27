@@ -288,25 +288,66 @@ def bezier_intersections(bez1, bez2, longer_length, tol=1e-8, tol_deC=1e-8):
         abs(bezier_point(bez1[0],t) - bezier_point(bez2[1],s)) < tol_deC
     Note: This will return exactly one such tuple for each intersection
     (assuming tol_deC is small enough)."""
+    pairs = [(bez1, bez2, False), (bez2, bez1, True)]
+    for point_curve, other, swapped in pairs:
+        if hasattr(point_curve, 'large_arc') or any(
+                p != point_curve[0] for p in point_curve):
+            continue
+        point = point_curve[0]
+        if hasattr(other, 'large_arc'):
+            from .path import Line
+            candidates = [t for direction in (1, 1j)
+                          for t, _ in other.intersect(
+                              Line(point - direction, point + direction))]
+        else:
+            polynomial = bezier2polynomial(other, return_poly1d=True)
+            candidates = [0.]
+            for component in (real, imag):
+                equation = component(polynomial) - component(point)
+                if any(equation.coeffs):
+                    candidates = polyroots01(equation)
+                    break
+        for t in candidates:
+            if abs(bezier_point(other, t) - point) <= tol:
+                return [(t, 0.) if swapped else (0., t)]
+        return []
+
     # Axis-aligned Beziers trace a line, but need not use its linear
     # parameterization. Solve against that line and map the points back to
     # the original Bezier parameters instead of subdividing zero-area boxes.
-    for flat, other, swapped in [(bez1, bez2, False), (bez2, bez1, True)]:
+    for flat, other, swapped in pairs:
         if hasattr(flat, 'large_arc'):
             continue
         xmin, xmax = min(p.real for p in flat), max(p.real for p in flat)
         ymin, ymax = min(p.imag for p in flat), max(p.imag for p in flat)
         if xmin == xmax or ymin == ymax:
             start, end = complex(xmin, ymin), complex(xmax, ymax)
-            if start == end:
+            component = real if ymin == ymax else imag
+            polynomial = component(bezier2polynomial(flat, return_poly1d=True))
+            if not hasattr(other, 'large_arc') and all(
+                    imag(p) == ymin if ymin == ymax else real(p) == xmin
+                    for p in other):
+                # Collinear curves can touch at interior extrema even when
+                # their control-point intervals overlap over a larger range.
+                box1 = bezier_bounding_box(flat)
+                box2 = bezier_bounding_box(other)
+                index = 0 if ymin == ymax else 2
+                low = max(box1[index], box2[index])
+                high = min(box1[index + 1], box2[index + 1])
+                if low != high:
+                    return []
+                flat_ts = polyroots01(polynomial - low)
+                other_ts = polyroots01(component(bezier2polynomial(
+                    other, return_poly1d=True)) - low)
+                if flat_ts and other_ts:
+                    t, u = flat_ts[0], other_ts[0]
+                    return [(u, t) if swapped else (t, u)]
                 return []
             if hasattr(other, 'large_arc'):
                 from .path import Line
                 intersections = other.intersect(Line(start, end))
             else:
                 intersections = bezier_by_line_intersections(other, (start, end))
-            component = real if ymin == ymax else imag
-            polynomial = component(bezier2polynomial(flat, return_poly1d=True))
             result = []
             for other_t, _ in intersections:
                 point = bezier_point(other, other_t)
