@@ -245,11 +245,8 @@ def boxes_intersect(box1, box2):
         (xmin, xmax, ymin, ymax), intersect."""
     xmin1, xmax1, ymin1, ymax1 = box1
     xmin2, xmax2, ymin2, ymax2 = box2
-    if interval_intersection_width(xmin1, xmax1, xmin2, xmax2) and \
-            interval_intersection_width(ymin1, ymax1, ymin2, ymax2):
-        return True
-    else:
-        return False
+    return (xmin1 <= xmax2 and xmin2 <= xmax1 and
+            ymin1 <= ymax2 and ymin2 <= ymax1)
 
 
 # Intersections ###############################################################
@@ -291,6 +288,32 @@ def bezier_intersections(bez1, bez2, longer_length, tol=1e-8, tol_deC=1e-8):
         abs(bezier_point(bez1[0],t) - bezier_point(bez2[1],s)) < tol_deC
     Note: This will return exactly one such tuple for each intersection
     (assuming tol_deC is small enough)."""
+    # Axis-aligned Beziers trace a line, but need not use its linear
+    # parameterization. Solve against that line and map the points back to
+    # the original Bezier parameters instead of subdividing zero-area boxes.
+    for flat, other, swapped in [(bez1, bez2, False), (bez2, bez1, True)]:
+        if hasattr(flat, 'large_arc'):
+            continue
+        xmin, xmax = min(p.real for p in flat), max(p.real for p in flat)
+        ymin, ymax = min(p.imag for p in flat), max(p.imag for p in flat)
+        if xmin == xmax or ymin == ymax:
+            start, end = complex(xmin, ymin), complex(xmax, ymax)
+            if start == end:
+                return []
+            if hasattr(other, 'large_arc'):
+                from .path import Line
+                intersections = other.intersect(Line(start, end))
+            else:
+                intersections = bezier_by_line_intersections(other, (start, end))
+            component = real if ymin == ymax else imag
+            polynomial = component(bezier2polynomial(flat, return_poly1d=True))
+            result = []
+            for other_t, _ in intersections:
+                point = bezier_point(other, other_t)
+                for flat_t in polyroots01(polynomial - component(point)):
+                    result.append((other_t, flat_t) if swapped else (flat_t, other_t))
+            return result
+
     maxits = int(ceil(1-log(tol_deC/longer_length)/log(2)))
     pair_list = [BPair(bez1, bez2, 0.5, 0.5)]
     intersection_list = []
@@ -373,4 +396,3 @@ def bezier_by_line_intersections(bezier, line):
             line_t = xval/line_length
             intersection_list.append((bez_t, line_t))
     return intersection_list
-
