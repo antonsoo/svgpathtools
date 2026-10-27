@@ -294,18 +294,18 @@ def bezier_intersections(bez1, bez2, longer_length, tol=1e-8, tol_deC=1e-8):
                 p != point_curve[0] for p in point_curve):
             continue
         point = point_curve[0]
+        candidates = [0., 1.]
         if hasattr(other, 'large_arc'):
             from .path import Line
-            candidates = [t for direction in (1, 1j)
-                          for t, _ in other.intersect(
-                              Line(point - direction, point + direction))]
+            candidates.extend(t for direction in (1, 1j)
+                              for t, _ in other.intersect(
+                                  Line(point - direction, point + direction)))
         else:
             polynomial = bezier2polynomial(other, return_poly1d=True)
-            candidates = [0.]
             for component in (real, imag):
                 equation = component(polynomial) - component(point)
                 if any(equation.coeffs):
-                    candidates = polyroots01(equation)
+                    candidates.extend(polyroots01(equation))
                     break
         for t in candidates:
             if abs(bezier_point(other, t) - point) <= tol:

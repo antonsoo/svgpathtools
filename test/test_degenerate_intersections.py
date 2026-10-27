@@ -100,6 +100,12 @@ class TestDegenerateIntersections(unittest.TestCase):
                     self.assertAlmostEqual(a.point(ta), -1j)
                     self.assertAlmostEqual(b.point(tb), -1j)
 
+    def test_point_at_bezier_endpoint(self):
+        curve = CubicBezier(35 + 151j, 50 + 151j, 86 + 169j, 64 + 183j)
+        point = CubicBezier(curve.end, curve.end, curve.end, curve.end)
+        self.assertEqual(curve.intersect(point), [(1., 0.)])
+        self.assertEqual(point.intersect(curve), [(0., 1.)])
+
     def test_finite_collinear_contact_at_extrema(self):
         for direction in [1, 1j]:
             first = QuadraticBezier(*(p * direction + 3 + 4j
